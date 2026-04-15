@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Inference Gateway Dashboard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: sans-serif; background: #0f0f0f; color: #e0e0e0; padding: 2rem; }
+    h1 { font-size: 1.4rem; margin-bottom: 1.5rem; color: #fff; }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem; }
+    .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 1rem; }
+    .card .label { font-size: 12px; color: #888; margin-bottom: 6px; }
+    .card .value { font-size: 28px; font-weight: 500; color: #fff; }
+    .card .value.green { color: #4ade80; }
+    .card .value.red { color: #f87171; }
+    .card .value.blue { color: #60a5fa; }
+    table { width: 100%; border-collapse: collapse; background: #1a1a1a; border-radius: 8px; overflow: hidden; }
+    th { text-align: left; padding: 10px 14px; font-size: 12px; color: #888; border-bottom: 1px solid #2a2a2a; }
+    td { padding: 10px 14px; font-size: 13px; border-bottom: 1px solid #1f1f1f; }
+    .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 500; }
+    .pill.healthy { background: #14532d; color: #4ade80; }
+    .pill.unhealthy { background: #450a0a; color: #f87171; }
+    h2 { font-size: 1rem; margin-bottom: 0.75rem; color: #aaa; }
+  </style>
+</head>
+<body>
+  <h1>Inference Gateway</h1>
+
+  <div class="grid">
+    <div class="card">
+      <div class="label">Total requests</div>
+      <div class="value" id="total">—</div>
+    </div>
+    <div class="card">
+      <div class="label">Successful</div>
+      <div class="value green" id="success">—</div>
+    </div>
+    <div class="card">
+      <div class="label">Failed</div>
+      <div class="value red" id="failed">—</div>
+    </div>
+    <div class="card">
+      <div class="label">Avg latency</div>
+      <div class="value blue" id="latency">—</div>
+    </div>
+  </div>
+
+  <h2>Workers</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Model</th>
+        <th>Status</th>
+        <th>Requests handled</th>
+        <th>Fail count</th>
+      </tr>
+    </thead>
+    <tbody id="workers"></tbody>
+  </table>
+
+  <script>
+    async function refresh() {
+      const res = await fetch('/metrics');
+      const data = await res.json();
+      const m = data.metrics;
+      document.getElementById('total').textContent = m.totalRequests;
+      document.getElementById('success').textContent = m.successfulRequests;
+      document.getElementById('failed').textContent = m.failedRequests;
+      document.getElementById('latency').textContent = m.avgLatencyMs + 'ms';
+      const tbody = document.getElementById('workers');
+      tbody.innerHTML = data.workers.map(w => `
+        <tr>
+          <td>${w.config.id}</td>
+          <td>${w.config.model}</td>
+          <td><span class="pill ${w.healthy ? 'healthy' : 'unhealthy'}">${w.healthy ? 'healthy' : 'unhealthy'}</span></td>
+          <td>${w.requestsHandled}</td>
+          <td>${w.failCount}</td>
+        </tr>
+      `).join('');
+    }
+    refresh();
+    setInterval(refresh, 3000);
+  </script>
+</body>
+</html>

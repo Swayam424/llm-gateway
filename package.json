@@ -1,0 +1,5 @@
+{
+  "name": "distributed-inference",
+  "private": true,
+  "workspaces": ["packages/*"]
+}
