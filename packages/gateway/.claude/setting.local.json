@@ -1,0 +1,9 @@
+{
+    "env": {
+        "ANTHROPIC_AUTH_TOKEN": "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",
+        "ANTHROPIC_BASE_URL": "",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL": "",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL": "",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL": ""
+    }
+}

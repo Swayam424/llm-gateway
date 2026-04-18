@@ -1,9 +1,10 @@
-import { BoundedQueue } from './queue';
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import axios from 'axios';
 import path from 'path';
 import { RoundRobinRouter } from './router';
+import { BoundedQueue } from './queue';
+import { getStreamAdapter } from './stream';
 import { ChatCompletionRequest, MetricSnapshot, WorkerConfig } from './types';
 
 const app = express();
@@ -32,6 +33,7 @@ const metrics = {
   failedRequests: 0,
   latencies: [] as number[]
 };
+
 const queue = new BoundedQueue(3, 20);
 const MAX_RETRIES = 2;
 
@@ -43,15 +45,11 @@ async function callWorker(worker: WorkerConfig, body: ChatCompletionRequest): Pr
         model: worker.model,
         messages: body.messages,
         stream: false,
-        options: {
-          temperature: body.temperature ?? 0.7,
-          num_predict: body.max_tokens ?? 512
-        }
+        options: { temperature: body.temperature ?? 0.7, num_predict: body.max_tokens ?? 512 }
       },
       { timeout: 30000 }
     );
     return res.data.message?.content ?? '';
-
   } else {
     const res = await axios.post(
       `${worker.baseUrl}/chat/completions`,
@@ -63,10 +61,7 @@ async function callWorker(worker: WorkerConfig, body: ChatCompletionRequest): Pr
       },
       {
         timeout: 30000,
-        headers: {
-          'Authorization': `Bearer ${worker.apiKey}`,
-          'Content-Type': 'application/json'
-        }
+        headers: { 'Authorization': `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' }
       }
     );
     return res.data.choices[0]?.message?.content ?? '';
@@ -92,19 +87,26 @@ async function forwardRequest(body: ChatCompletionRequest, res: Response, attemp
   const start = Date.now();
 
   try {
-    const content = await callWorker(worker, body);
-    metrics.successfulRequests++;
-    metrics.latencies.push(Date.now() - start);
-    res.json({
-      id: `chatcmpl-${Date.now()}`,
-      object: 'chat.completion',
-      model: body.model,
-      choices: [{
-        message: { role: 'assistant', content },
-        finish_reason: 'stop',
-        index: 0
-      }]
-    });
+    if (body.stream) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      const adapter = getStreamAdapter(worker.type);
+      await adapter.stream(worker, body, res);
+      metrics.successfulRequests++;
+      metrics.latencies.push(Date.now() - start);
+      res.end();
+    } else {
+      const content = await callWorker(worker, body);
+      metrics.successfulRequests++;
+      metrics.latencies.push(Date.now() - start);
+      res.json({
+        id: `chatcmpl-${Date.now()}`,
+        object: 'chat.completion',
+        model: body.model,
+        choices: [{ message: { role: 'assistant', content }, finish_reason: 'stop', index: 0 }]
+      });
+    }
   } catch (err: any) {
     console.log(`Worker ${worker.id} error:`, err?.response?.data ?? err?.message);
     router.markUnhealthy(worker.id);
@@ -113,7 +115,6 @@ async function forwardRequest(body: ChatCompletionRequest, res: Response, attemp
   }
 }
 
-// Health check loop
 setInterval(async () => {
   for (const state of router.getAll()) {
     try {
@@ -159,5 +160,6 @@ app.post('/v1/chat/completions', async (req: Request, res: Response) => {
     res.status(503).json({ error: 'Gateway queue full. Try again later.' });
   }
 });
+
 const PORT = process.env.PORT ?? 3000;
 app.listen(PORT, () => console.log(`Gateway running on port ${PORT}`));
