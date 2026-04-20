@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import axios from 'axios';
 import path from 'path';
+import * as http from 'http';
 import { RoundRobinRouter } from './router';
 import { BoundedQueue } from './queue';
 import { getStreamAdapter } from './stream';
@@ -10,6 +11,18 @@ import { ChatCompletionRequest, MetricSnapshot, WorkerConfig } from './types';
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+const server = http.createServer((req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+  (app as any)(req, res);
+});
 
 const router = new RoundRobinRouter([
   {
@@ -162,4 +175,4 @@ app.post('/v1/chat/completions', async (req: Request, res: Response) => {
 });
 
 const PORT = process.env.PORT ?? 3000;
-app.listen(PORT, () => console.log(`Gateway running on port ${PORT}`));
+server.listen(PORT, () => console.log(`Gateway running on port ${PORT}`));
